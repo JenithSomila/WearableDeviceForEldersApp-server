@@ -1,7 +1,7 @@
-from flask import Flask, request, jsonify
-import socket
-from zeroconf import ServiceInfo, Zeroconf
+import os
 import time
+import socket
+from flask import Flask, request, jsonify
 
 app = Flask(__name__)
 
@@ -9,6 +9,10 @@ app = Flask(__name__)
 pending_sms = None
 
 # --- API ENDPOINTS FOR THE APP ---
+
+@app.route('/', methods=['GET'])
+def home():
+    return "<h1>Elder Care Server is Live! 🚀</h1>", 200
 
 @app.route('/config', methods=['POST'])
 def receive_config():
@@ -36,7 +40,6 @@ def confirm_sms():
     return "OK", 200
 
 # --- TESTING ENDPOINT ---
-# Open http://192.168.8.101:8080/trigger in your computer browser to test the app!
 @app.route('/trigger', methods=['GET'])
 def trigger_test():
     global pending_sms
@@ -47,34 +50,12 @@ def trigger_test():
     }
     return "<h1>Emergency Triggered!</h1><p>The Android app should react now.</p>", 200
 
-# --- AUTO-DISCOVERY (NSD) ---
-def start_mdns(ip):
-    desc = {'path': '/'}
-    info = ServiceInfo(
-        "_eldercare._tcp.local.",
-        "ElderCareServer._eldercare._tcp.local.",
-        addresses=[socket.inet_aton(ip)],
-        port=8080,
-        properties=desc,
-        server="eldercare.local.",
-    )
-    zeroconf = Zeroconf()
-    print(f"[NSD] Broadcasting service as 'ElderCareServer' on {ip}...")
-    zeroconf.register_service(info)
-    return zeroconf
 
 if __name__ == '__main__':
-    # Get your computer's IP
-    hostname = socket.gethostname()
-    local_ip = socket.gethostbyname(hostname)
+    # Get Railway's dynamic PORT environment variable (default to 5000 if local)
+    port = int(os.environ.get("PORT", 5000))
     
-    # Start the Auto-Discovery
-    zc = start_mdns(local_ip)
+    print(f"\n[SERVER] Running on port {port}...")
     
-    print(f"\n[SERVER] Running on http://{local_ip}:8080")
-    print(f"[TEST] Open http://{local_ip}:8080/trigger to simulate an emergency.")
-    
-    try:
-        app.run(host='0.0.0.0', port=8080, debug=False)
-    finally:
-        zc.close()
+    # Run the Flask app
+    app.run(host='0.0.0.0', port=port, debug=False)
