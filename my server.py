@@ -36,19 +36,42 @@ def confirm_sms():
     global pending_sms
     sms_id = request.args.get('id')
     print(f"[SUCCESS] App confirmed SMS {sms_id} was sent to the elder!")
-    pending_sms = None # Clear it so it doesn't send again
+    pending_sms = None  # Clear it so it doesn't send again
     return "OK", 200
 
-# --- TESTING ENDPOINT ---
-@app.route('/trigger', methods=['GET'])
+# --- ESP32 TRIGGER ENDPOINT (FIXED!) ---
+@app.route('/trigger', methods=['GET', 'POST'])
 def trigger_test():
     global pending_sms
+    
+    # 1. ESP32 එකෙන් එවන GET Query Parameters ලබා ගැනීම
+    status = request.args.get('status', 'EMERGENCY')
+    lat = request.args.get('lat')
+    lng = request.args.get('lng')
+    maps_url = request.args.get('maps_url')
+
+    # 2. Google Maps URL එක සෑදීම
+    if lat and lng:
+        final_maps_url = f"https://maps.google.com/?q=6.9271,79.8612{lat},{lng}"
+    elif maps_url and maps_url != "No_GPS_Fix":
+        final_maps_url = maps_url
+    else:
+        final_maps_url = "Location Not Available (No GPS Fix)"
+
+    # 3. Emergency Message එක පිළියෙල කිරීම (Map Link එක සහිතව)
+    emergency_message = f"EMERGENCY: Elder needs help! Location: {final_maps_url}"
+
+    # 4. App එකට යැවීමට pending_sms එක set කිරීම
     pending_sms = {
         "id": str(int(time.time())),
-        "phoneNumber": "0771234567", # Change this to a real number for testing
-        "message": "EMERGENCY: Elder needs help! Location: https://maps.google.com/?q=6.9271,79.8612"
+        "phoneNumber": "0771234567",  # Change this to a real target number if needed
+        "message": emergency_message
     }
-    return "<h1>Emergency Triggered!</h1><p>The Android app should react now.</p>", 200
+    
+    print(f"\n[TRIGGERED] New Emergency Alert Generated!")
+    print(f"   - Message: {emergency_message}")
+
+    return f"<h1>Emergency Triggered!</h1><p>Message: {emergency_message}</p>", 200
 
 
 if __name__ == '__main__':
