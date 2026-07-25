@@ -1,56 +1,69 @@
 import os
 import time
-import socket
 from flask import Flask, request, jsonify
+import firebase_admin
+from firebase_admin import credentials, messaging
 
 app = Flask(__name__)
 
-# Storage for the emergency trigger
-pending_sms = None
+# Firebase Credentials File එක Load කිරීම
+# Repo එකේ තියෙන JSON File එකේ නම මෙතනට දෙන්න
+cred = credentials.Certificate("serviceAccountKey.json")
+firebase_admin.initialize_app(cred)
 
-# --- API ENDPOINTS FOR THE APP ---
+# Global Variables
+device_fcm_token = None
+target_phone_number = "0771234567"
 
 @app.route('/', methods=['GET'])
 def home():
-    return "<h1>Elder Care Server is Live! 🚀</h1>", 200
+    return "<h1>Elder Care Server with Firebase is Live! 🚀</h1>", 200
 
-@app.route('/config', methods=['POST'])
+# App එකෙන් FCM Token එක ගන්න Endpoint එක
+@app.route('/config', methods=['POST', 'GET'])
 def receive_config():
-    sim = request.args.get('sim')
+    global device_fcm_token, target_phone_number
     target = request.args.get('target')
-    print(f"\n[CONFIG] Received from App:")
-    print(f"   - Band SIM: {sim}")
-    print(f"   - Target Phone: {target}")
+    fcm_token = request.args.get('fcm_token')
+    
+    if target:
+        target_phone_number = target
+    if fcm_token:
+        device_fcm_token = fcm_token
+        
+    print(f"\n[CONFIG] Received - Target: {target_phone_number}, Token: {device_fcm_token}")
     return "OK", 200
 
-@app.route('/get_pending_sms', methods=['GET'])
-def get_sms():
-    global pending_sms
-    if pending_sms:
-        print(f"[POLLING] App requested SMS. Sending: {pending_sms['id']}")
-        return jsonify(pending_sms)
-    return "null", 200
+# Notification එක Phone එකට යවන Function එක
+def send_firebase_notification(maps_url):
+    global device_fcm_token
+    if not device_fcm_token:
+        print("[FIREBASE ERROR] No Device FCM Token registered yet!")
+        return False
 
-@app.route('/confirm_sms', methods=['POST'])
-def confirm_sms():
-    global pending_sms
-    sms_id = request.args.get('id')
-    print(f"[SUCCESS] App confirmed SMS {sms_id} was sent to the elder!")
-    pending_sms = None  # Clear it so it doesn't send again
-    return "OK", 200
+    message = messaging.Message(
+        notification=messaging.Notification(
+            title="🚨 EMERGENCY SOS ALERT!",
+            body=f"Elder Needs Help! Location: {maps_url}"
+        ),
+        token=device_fcm_token,
+    )
+    
+    try:
+        response = messaging.send(message)
+        print(f"[FIREBASE SUCCESS] Notification sent: {response}")
+        return True
+    except Exception as e:
+        print(f"[FIREBASE ERROR] Failed to send: {e}")
+        return False
 
-# --- ESP32 TRIGGER ENDPOINT (FIXED!) ---
+# ESP32 එකෙන් Trigger වෙන Endpoint එක
 @app.route('/trigger', methods=['GET', 'POST'])
 def trigger_test():
-    global pending_sms
-    
-    # 1. ESP32 එකෙන් එවන GET Query Parameters ලබා ගැනීම
-    status = request.args.get('status', 'EMERGENCY')
     lat = request.args.get('lat')
     lng = request.args.get('lng')
     maps_url = request.args.get('maps_url')
 
-    # 2. Google Maps URL එක සෑදීම
     if lat and lng:
         final_maps_url = f"https://maps.google.com/?q=6.9271,79.8612{lat},{lng}"
     elif maps_url and maps_url != "No_GPS_Fix":
@@ -58,27 +71,11 @@ def trigger_test():
     else:
         final_maps_url = "Location Not Available (No GPS Fix)"
 
-    # 3. Emergency Message එක පිළියෙල කිරීම (Map Link එක සහිතව)
-    emergency_message = f"EMERGENCY: Elder needs help! Location: {final_maps_url}"
+    # Notification එක යැවීම
+    send_firebase_notification(final_maps_url)
 
-    # 4. App එකට යැවීමට pending_sms එක set කිරීම
-    pending_sms = {
-        "id": str(int(time.time())),
-        "phoneNumber": "0771234567",  # Change this to a real target number if needed
-        "message": emergency_message
-    }
-    
-    print(f"\n[TRIGGERED] New Emergency Alert Generated!")
-    print(f"   - Message: {emergency_message}")
-
-    return f"<h1>Emergency Triggered!</h1><p>Message: {emergency_message}</p>", 200
-
+    return f"<h1>Emergency Triggered!</h1><p>Location: {final_maps_url}</p>", 200
 
 if __name__ == '__main__':
-    # Get Railway's dynamic PORT environment variable (default to 5000 if local)
     port = int(os.environ.get("PORT", 5000))
-    
-    print(f"\n[SERVER] Running on port {port}...")
-    
-    # Run the Flask app
     app.run(host='0.0.0.0', port=port, debug=False)
