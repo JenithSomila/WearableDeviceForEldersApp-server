@@ -36,26 +36,45 @@ def confirm_sms():
     global pending_sms
     sms_id = request.args.get('id')
     print(f"[SUCCESS] App confirmed SMS {sms_id} was sent to the elder!")
-    pending_sms = None # Clear it so it doesn't send again
+    pending_sms = None 
     return "OK", 200
 
-# --- TESTING ENDPOINT ---
-@app.route('/trigger', methods=['GET'])
+# --- ESP32 TRIGGER ENDPOINT (UPDATED FOR POST & GET) ---
+@app.route('/trigger', methods=['GET', 'POST'])
 def trigger_test():
     global pending_sms
+    
+    # ESP32 එකෙන් JSON ඩේටා POST කරනකොට මේක ක්‍රියාත්මක වෙනවා
+    if request.method == 'POST':
+        data = request.get_json()
+        if data:
+            bpm = data.get('bpm')
+            acc = data.get('acceleration')
+            lat = data.get('lat')
+            lng = data.get('lng')
+            print(f"\n[ESP32 DATA RECEIVED] -> BPM: {bpm}, Acc: {acc}, Lat: {lat}, Lng: {lng}")
+            
+            # හදිසි තත්ත්වයක් නම් (ఉదా: BPM වැඩි නම් හෝ වැටීමක් වුණොත්) SMS එකක් ත්‍රීගර් කරන්න පුළුවන්
+            if (bpm and bpm > 130) or (acc and acc > 20.0):
+                pending_sms = {
+                    "id": str(int(time.time())),
+                    "phoneNumber": "0771234567",
+                    "message": f"EMERGENCY! Elder needs help! Location: https://maps.google.com/?q={lat},{lng}"
+                }
+                print("[ALERT] Emergency condition met! SMS queued.")
+                
+        return jsonify({"status": "Success", "message": "Data received!"}), 200
+
+    # බ්‍රව්සර් එකෙන් GET ඉල්ලීමක් කළොත් පරණ ටෙස්ට් පේජ් එක පෙන්වයි
     pending_sms = {
         "id": str(int(time.time())),
-        "phoneNumber": "0771234567", # Change this to a real number for testing
-        "message": "EMERGENCY: Elder needs help! Location: https://maps.google.com/?q=6.9271,79.8612"
+        "phoneNumber": "0771234567", 
+        "message": "EMERGENCY: Elder needs help!"
     }
-    return "<h1>Emergency Triggered!</h1><p>The Android app should react now.</p>", 200
+    return "<h1>Emergency Triggered via GET!</h1>", 200
 
 
 if __name__ == '__main__':
-    # Get Railway's dynamic PORT environment variable (default to 5000 if local)
     port = int(os.environ.get("PORT", 5000))
-    
     print(f"\n[SERVER] Running on port {port}...")
-    
-    # Run the Flask app
     app.run(host='0.0.0.0', port=port, debug=False)
