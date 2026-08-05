@@ -45,7 +45,7 @@ def confirm_sms():
     pending_sms = None 
     return "OK", 200
 
-# --- ESP32 TRIGGER ENDPOINT (Receives Health Data) ---
+# --- ESP32 TRIGGER ENDPOINT (Receives Health Data & Current BPM) ---
 @app.route('/trigger', methods=['GET', 'POST'])
 def trigger_test():
     global pending_sms, latest_health_data
@@ -53,6 +53,7 @@ def trigger_test():
     if request.method == 'POST':
         data = request.get_json()
         if data:
+            # ESP32 එකෙන් එවන current bpm අගය මෙතනින් ලබා ගනී
             bpm = data.get('bpm', 0)
             acc = data.get('acceleration', 0.0)
             lat = data.get('lat', 0.0)
@@ -65,7 +66,7 @@ def trigger_test():
             elif acc > 20.0:
                 status = "Fall Detected!"
 
-            # ඩේටා ටික ග්ලෝබල් වේරියබල් එකේ සේව් කරගන්නවා (ඇප් එකට ඉල්ලනකොට දෙන්න)
+            # සජීවී (Current) BPM අගය ඇප් එකට යැවීම සඳහා ග්ලෝබල් වේරියබල් එකට දායි
             latest_health_data = {
                 "bpm": bpm,
                 "acceleration": acc,
@@ -74,7 +75,7 @@ def trigger_test():
                 "status": status
             }
             
-            print(f"\n[ESP32 DATA] -> BPM: {bpm}, Acc: {acc}, Status: {status}")
+            print(f"\n[ESP32 DATA] -> Current BPM: {bpm}, Acc: {acc}, Status: {status}")
             
             # හදිසි තත්ත්වයක් නම් SMS එකක් ත්‍රීගර් කරන්න
             if status != "Normal":
@@ -93,6 +94,7 @@ def trigger_test():
 @app.route('/get_health', methods=['GET'])
 def get_health():
     global latest_health_data
+    # ඇප් එකට මේකෙන් සජීවී BPM අගය ලබා දේ
     return jsonify(latest_health_data), 200
 
 
